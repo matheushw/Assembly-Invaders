@@ -1,7 +1,8 @@
-# Trabalho Pratico 2 - TP2 - OpÃ§Ã£o 2 Jogo
+# Trabalho Pratico 2 - TP2 - Opção 2 Jogo
 # Organizacao e Arquitetura de Computadores - SSC0902
 # Matheus Barcellos de Castro Cunha - 11208238
 
+#$s3 iteracoes tiro inimigo
 #$s5 iteracoes
 #$s6 posicao do tiro da nave
 #$s7 flag do tiro
@@ -10,11 +11,13 @@
 	frameBuffer: .space 0x80000
 	offsetNave: .word 0
 	tiroNave: .word 0
-	tiroLoopIterations: .word 300
+	tiroLoopIterations: .word 800
 	
 	offsetInimigoGeral: .word 508
 	offsetInimigos: .word 508, 1532, 2556, 3580
 	vidaInimigos: .word 3, 3, 3, 3
+	tiroInimigo: .word 0, 0, 0, 0
+	iteracaoTiroInimigo: .word 0, 0, 0, 0
 	blankSpace: .asciiz " "
 .text
 	.glob main
@@ -33,11 +36,50 @@ initLoop:
 	lw $s4, tiroLoopIterations
 	j updTiroLoop
 updTiroLoop:
-	beqz $s7, leituraMM
-	sub $s4,$s4,1
-	j updTiro
+
+#####Inicio de checagem para saber se o inimigo pode disparar#####
+	li $a0, 0
+	jal checkInimigoAtira
+	li $a0, 4
+	jal checkInimigoAtira
+	li $a0, 8
+	jal checkInimigoAtira
+	li $a0, 12
+	jal checkInimigoAtira
+#####Fim de checagem para saber se o inimigo pode disparar#####
+	
+	#checa se ha tiro amigo no mapa
+	bnez $s7, updTiro 
+	
+#####Inicio checagem se ha tiro inimigo no mapa#####
+	lw $t0, tiroInimigo
+	bnez $t0, updTiro
+	lw $t0, tiroInimigo+4
+	bnez $t0, updTiro
+	lw $t0, tiroInimigo+8
+	bnez $t0, updTiro
+	lw $t0, tiroInimigo+12
+	bnez $t0, updTiro
+#####Fim checagem se ha tiro inimigo no mapa#####
+	
+	j leituraMM
 updTiro:
+	sub $s4,$s4,1
 	bne $zero, $s4, leituraMM
+	
+	##Inicio update tiros inimigos##
+	li $a0, 0
+	jal checkUpdTiroInimigo
+	li $a0, 4
+	jal checkUpdTiroInimigo
+	li $a0, 8
+	jal checkUpdTiroInimigo
+	li $a0, 12
+	jal checkUpdTiroInimigo
+	##Fim update tiros inimigos##
+		
+	beqz $s7, initLoop
+	### atualiza tiro da navo, caso haja
 	addu $s5, $s5, 1
 	jal checkColisao	
 
@@ -76,7 +118,7 @@ inimigoMorto:
 	sw $t0, ($t1)
 	addu $t1, $t1, 128
 	sw $t0, ($t1)
-
+	
 	sw $t0, offsetInimigos($a0)
 	j fimMapa
 fimMapa:
@@ -85,11 +127,11 @@ fimMapa:
 	li $s7, 0
 	j initLoop
 leituraMM:
-	lw $t0, 0xffff0000 #Carrega espaÃ§o de memÃ³ria que indica chegada de input
+	lw $t0, 0xffff0000 #Carrega espaço de memória que indica chegada de input
 	andi $t0, $t0, 0x00000001 #Isolando bit pra obter a flag
-	beqz $t0, updTiroLoop #Caso nÃ£o tenha chego nada
+	beqz $t0, updTiroLoop #Caso não tenha chego nada
 identificaTecla:
-	lbu $a0, 0xffff0004 #LÃª memÃ³ria que guarda o input do teclado
+	lbu $a0, 0xffff0004 #Lê memória que guarda o input do teclado
 	move $s0, $a0 
 	li $t1,'x' #Parar a execucao
 	beq $a0, $t1, fim
@@ -182,6 +224,54 @@ atirar:
 	addu $s6, $s6, 136  
 	li $s4, 1
 	j updTiroLoop
+
+########Início da rotina de checagem e disparo de tiro inimigo########	
+checkInimigoAtira:
+	lw $t0, vidaInimigos($a0) 
+	bnez $t0, checkInimigoAtira2 #Checando se o inimigo $a0 está morto
+	jr $ra
+checkInimigoAtira2:
+	lw $t0, tiroInimigo($a0) 
+	beqz $t0, inimigoAtira #Checando se o inimigo $a0 pode atirar
+	jr $ra 
+inimigoAtira:
+	lw $t1, offsetInimigos($a0)
+	addu $t0, $t1, 120
+	sw $t0, tiroInimigo($a0)
+	jr $ra
+########Fim da rotina de checagem e disparo de tiro inimigo########
+
+########Início da rotina de atualizacao de um tiro inimigo########
+checkUpdTiroInimigo:
+	lw $t0, tiroInimigo($a0) 
+	bnez $t0, apagaTiroInimigo #Checando se o inimigo $a0 ja atirou
+	jr $ra
+apagaTiroInimigo:
+	li $t1, 0 
+    	la $t2, frameBuffer
+    	addu $t2, $t2, $t0 
+	sw $t1, ($t2)
+	j checkUpdTiroInimigo2
+checkUpdTiroInimigo2:
+	lw $t3, iteracaoTiroInimigo($a0)
+	addu $t3, $t3, 1
+	bne $t3, 30, updTiroInimigo #Checando se o tiro da nave $a0 chegou no fim do mapa
+	j resetarFlagsInimigo
+resetarFlagsInimigo:
+	li $t4, 0
+	sw $t4, tiroInimigo($a0)
+	sw $t4, iteracaoTiroInimigo($a0)
+	jr $ra
+updTiroInimigo:
+	li $t1, -1 
+	subu $t0, $t0, 4 
+    	subu $t2, $t2, 4 
+	sw $t1, ($t2)
+	sw $t0, tiroInimigo($a0)
+	sw $t3, iteracaoTiroInimigo($a0)
+	jr $ra
+########Fim da rotina de atualizacao de um tiro inimigo########
+
 checkColisao:
 	#Checa colisao com nave inimiga 1
 	li $a0, 0
